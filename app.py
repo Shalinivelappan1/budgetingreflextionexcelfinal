@@ -13,7 +13,12 @@ st.set_page_config(
 )
 
 st.title("💰 Smart Budget, Risk & Resilience Tracker")
-st.caption("Finance × HR | India-focused | Risk-aware personal budgeting")
+st.caption("Developed by Prof.Shalini Velappan, IIM Trichy")
+
+st.info(
+    "ℹ️ Budgeting is done on a **monthly basis**. "
+    "Salary (CTC) inputs are **annual** and converted to monthly for analysis."
+)
 
 # ==================================================
 # SCORING FUNCTIONS
@@ -60,26 +65,14 @@ def get_resilience_grade(score):
 
 def suggest_fastest_resilience_fix(resilience_loss_pct, savings_rate, variable_ratio, fixed_coverage_ratio):
     if resilience_loss_pct <= 10:
-        return "Maintain current discipline. Avoid lifestyle inflation."
+        return "Maintain current discipline and avoid lifestyle inflation."
     if savings_rate < 10:
-        return "Increase savings slightly — this gives the fastest resilience gain."
+        return "Increase monthly savings slightly — this gives the fastest resilience gain."
     if variable_ratio > 0.35:
-        return "Reduce dependence on variable pay for regular expenses."
+        return "Reduce dependence on variable pay for regular monthly expenses."
     if fixed_coverage_ratio < 1:
-        return "Reduce fixed expenses so they are fully covered by fixed income."
+        return "Reduce fixed monthly expenses so they are covered by fixed income."
     return "Improve expense flexibility by reducing discretionary spending."
-
-# ==================================================
-# EXCEL EXPORT
-# ==================================================
-def generate_excel(dataframes):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        workbook = writer.book
-        for name, df in dataframes.items():
-            df.to_excel(writer, sheet_name=name, index=False)
-    output.seek(0)
-    return output
 
 # ==================================================
 # TABS
@@ -90,7 +83,7 @@ tab1, tab2 = st.tabs(["📊 Dashboard", "🧠 Reflection & Submission"])
 # TAB 1 — DASHBOARD
 # ==================================================
 with tab1:
-    st.subheader("💸 Income & Expenses")
+    st.subheader("💸 Monthly Budget")
 
     income = st.number_input("Monthly Income (₹)", min_value=0, step=1000)
 
@@ -114,31 +107,43 @@ with tab1:
     needs_pct = needs / income * 100 if income else 0
     wants_pct = wants / income * 100 if income else 0
 
-    st.metric("Savings", f"₹{savings:,.0f}")
+    st.metric("Monthly Savings", f"₹{savings:,.0f}")
     st.metric("Savings Rate", f"{savings_rate:.1f}%")
 
-    # ---------- Salary Structure ----------
-    st.subheader("🏢 Salary Structure (Annual)")
+    # ==================================================
+    # SALARY STRUCTURE (ANNUAL → MONTHLY)
+    # ==================================================
+    st.subheader("🏢 Salary Structure (Annual CTC)")
 
-    basic = st.number_input("Basic Pay", 0)
-    hra = st.number_input("HRA", 0)
-    allowance = st.number_input("Special Allowance", 0)
-    variable = st.number_input("Variable Pay", 0)
-    pf = st.number_input("Employee PF", 0)
-    tax = st.number_input("Income Tax", 0)
-    pt = st.number_input("Professional Tax", 0)
+    basic = st.number_input("Basic Pay (Annual)", 0)
+    hra = st.number_input("HRA (Annual)", 0)
+    allowance = st.number_input("Special Allowance (Annual)", 0)
+    variable = st.number_input("Variable Pay (Annual)", 0)
+    pf = st.number_input("Employee PF (Annual)", 0)
+    tax = st.number_input("Income Tax (Annual)", 0)
+    pt = st.number_input("Professional Tax (Annual)", 0)
 
-    fixed_pay = basic + hra + allowance
-    gross = fixed_pay + variable
-    deductions = pf + tax + pt
+    fixed_pay_annual = basic + hra + allowance
+    gross_annual = fixed_pay_annual + variable
+    deductions_annual = pf + tax + pt
+
+    # ---- Convert to MONTHLY ----
+    fixed_pay = fixed_pay_annual / 12
+    variable_monthly = variable / 12
+    gross = gross_annual / 12
+    deductions = deductions_annual / 12
+
     normal_take_home = gross - deductions
+    normal_savings = normal_take_home - total_expenses
 
-    # ---------- Pie Charts ----------
+    # ==================================================
+    # PIE CHARTS
+    # ==================================================
     st.subheader("🔄 Income Structure vs Budget Allocation")
     col1, col2 = st.columns(2)
 
     with col1:
-        values = [fixed_pay, variable, deductions]
+        values = [fixed_pay, variable_monthly, deductions]
         if sum(values) > 0:
             fig, ax = plt.subplots()
             ax.pie(values, labels=["Fixed Pay", "Variable Pay", "Deductions"],
@@ -159,36 +164,37 @@ with tab1:
         else:
             st.info("Enter income & expenses to view chart.")
 
-    # ---------- Scenario Shocks ----------
+    # ==================================================
+    # SCENARIO SHOCKS (MONTHLY-CONSISTENT)
+    # ==================================================
     st.subheader("⚡ Scenario Shocks")
 
     bonus_shock = st.checkbox("❌ Bonus / Variable Pay NOT paid")
     tax_shock = st.checkbox("📈 Income Tax increases by 20%")
 
-    shocked_variable = 0 if bonus_shock else variable
-    shocked_tax = tax * 1.2 if tax_shock else tax
+    shocked_variable = 0 if bonus_shock else variable_monthly
+    shocked_tax = (tax * 1.2) / 12 if tax_shock else tax / 12
 
-    shocked_gross = fixed_pay + shocked_variable
-    shocked_deductions = pf + shocked_tax + pt
-    shocked_take_home = shocked_gross - shocked_deductions
+    shocked_take_home = (fixed_pay + shocked_variable) - (pf / 12 + shocked_tax + pt / 12)
     shocked_savings = shocked_take_home - total_expenses
-    shocked_savings_rate = shocked_savings / shocked_take_home * 100 if shocked_take_home > 0 else 0
 
-    # ---------- Scores ----------
+    # ==================================================
+    # SCORES
+    # ==================================================
     budget_score = calculate_financial_health_score(
         savings_rate, expense_ratio, needs_pct, wants_pct
     )
 
     alignment_score = calculate_ctc_budget_alignment_score(
-        fixed_pay, variable, needs, savings, gross
+        fixed_pay, variable_monthly, needs, savings, gross
     )
 
     normal_stress_score = calculate_stress_test_score(
-        total_expenses, normal_take_home, savings, savings
+        total_expenses, normal_take_home, normal_savings, normal_savings
     )
 
     shocked_stress_score = calculate_stress_test_score(
-        total_expenses, shocked_take_home, savings, shocked_savings
+        total_expenses, shocked_take_home, normal_savings, shocked_savings
     )
 
     normal_grade = get_resilience_grade(normal_stress_score)
@@ -199,27 +205,29 @@ with tab1:
         if normal_stress_score > 0 else 0
     )
 
-    variable_ratio = variable / gross if gross else 1
+    variable_ratio = variable_monthly / gross if gross else 1
     fixed_coverage_ratio = fixed_pay / needs if needs else 0
 
     fastest_fix = suggest_fastest_resilience_fix(
         resilience_loss_pct, savings_rate, variable_ratio, fixed_coverage_ratio
     )
 
-    # ---------- Display ----------
+    # ==================================================
+    # DISPLAY RESULTS
+    # ==================================================
     st.subheader("📊 Normal vs Shocked (Side-by-Side)")
-
     c1, c2 = st.columns(2)
+
     with c1:
         st.markdown("**Normal**")
-        st.metric("Savings", f"₹{savings:,.0f}")
+        st.metric("Savings", f"₹{normal_savings:,.0f}")
         st.metric("Stress-Test Score", normal_stress_score)
         st.metric("Grade", normal_grade)
 
     with c2:
         st.markdown("**After Shock**")
         st.metric("Savings", f"₹{shocked_savings:,.0f}",
-                  delta=f"₹{shocked_savings - savings:,.0f}")
+                  delta=f"₹{shocked_savings - normal_savings:,.0f}")
         st.metric("Stress-Test Score", shocked_stress_score,
                   delta=shocked_stress_score - normal_stress_score)
         st.metric("Grade", shocked_grade)
@@ -237,7 +245,7 @@ with tab1:
     st.info(fastest_fix)
 
 # ==================================================
-# TAB 2 — REFLECTION & EXPORT
+# TAB 2 — REFLECTION
 # ==================================================
 with tab2:
     st.subheader("🧠 Reflection")
@@ -254,34 +262,3 @@ with tab2:
         "7️⃣ Targeted Action Reflection: "
         f"{fastest_fix} How realistic is this change for you?"
     )
-
-    if st.button("⬇️ Download Excel Submission"):
-        excel = generate_excel({
-            "Summary": pd.DataFrame({
-                "Metric": [
-                    "Savings", "Savings Rate (%)",
-                    "Budget Score", "Alignment Score",
-                    "Normal Stress Score", "Shocked Stress Score",
-                    "Normal Grade", "Shocked Grade",
-                    "Resilience Loss (%)"
-                ],
-                "Value": [
-                    savings, round(savings_rate, 2),
-                    budget_score, alignment_score,
-                    normal_stress_score, shocked_stress_score,
-                    normal_grade, shocked_grade,
-                    round(resilience_loss_pct, 1)
-                ]
-            }),
-            "Expenses": df_exp,
-            "Reflections": pd.DataFrame({
-                "Response": [r1, r2, r3, r4, r5, r6, r7]
-            })
-        })
-
-        st.download_button(
-            "📥 Download Excel",
-            excel,
-            "Budget_Risk_Resilience_Submission.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
