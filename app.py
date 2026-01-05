@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 st.title("💰 Smart Budget & Resilience Tracker")
-st.caption("Budgeting • Scenarios • CTC alignment (student-friendly)")
+st.caption("Budgeting • Scenario risk • Income structure alignment")
 
 # ==================================================
 # FUNCTIONS
@@ -36,28 +36,41 @@ def get_resilience_grade(score):
     return "A" if score >= 80 else "B" if score >= 65 else "C" if score >= 50 else "D"
 
 
-def calculate_ctc_alignment_score(fixed_pay_monthly, needs, variable_ratio):
+def calculate_ctc_alignment_score(
+    fixed_pay_monthly,
+    needs,
+    variable_ratio,
+    savings_rate
+):
     score = 0
 
-    # Fixed pay coverage (60)
+    # 1️⃣ Fixed pay covers needs (50)
     if fixed_pay_monthly >= needs:
-        score += 60
+        score += 50
     elif fixed_pay_monthly >= 0.8 * needs:
-        score += 45
+        score += 35
     elif fixed_pay_monthly >= 0.6 * needs:
-        score += 30
-    else:
-        score += 10
-
-    # Variable dependence (40)
-    if variable_ratio <= 0.2:
-        score += 40
-    elif variable_ratio <= 0.35:
-        score += 30
-    elif variable_ratio <= 0.5:
         score += 20
     else:
+        score += 5
+
+    # 2️⃣ Variable dependence (30)
+    if variable_ratio <= 0.2:
+        score += 30
+    elif variable_ratio <= 0.35:
+        score += 20
+    elif variable_ratio <= 0.5:
         score += 10
+    else:
+        score += 5
+
+    # 3️⃣ Savings discipline (20)
+    if savings_rate >= 20:
+        score += 20
+    elif savings_rate >= 10:
+        score += 10
+    else:
+        score += 0
 
     return score
 
@@ -70,7 +83,6 @@ def generate_excel(summary_df, expenses_df, reflection_df, ctc_df):
         summary_df.to_excel(writer, sheet_name="Summary", index=False)
         expenses_df.to_excel(writer, sheet_name="Expenses", index=False)
 
-        # CTC sheet + pie
         ctc_df.to_excel(writer, sheet_name="CTC_Structure", index=False)
         ws = writer.sheets["CTC_Structure"]
 
@@ -126,7 +138,6 @@ with tab1:
     st.metric("Monthly Savings", f"₹{normal_savings:,.0f}")
     st.metric("Savings Rate", f"{savings_rate:.1f}%")
 
-    # Expense groups
     needs = expenses["Housing (Rent / EMI)"] + expenses["Food"] + expenses["Utilities"]
     wants = expenses["Lifestyle & Entertainment"]
     others = total_expenses - needs - wants
@@ -155,27 +166,24 @@ with tab1:
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**Expenses: Needs / Wants / Others**")
-        vals = [needs, wants, others]
-        if sum(vals) > 0:
+        if needs + wants + others > 0:
             fig, ax = plt.subplots()
-            ax.pie(vals, labels=["Needs", "Wants", "Others"], autopct="%1.0f%%")
+            ax.pie([needs, wants, others],
+                   labels=["Needs", "Wants", "Others"],
+                   autopct="%1.0f%%")
             ax.axis("equal")
             st.pyplot(fig)
-        else:
-            st.info("Enter expenses to view chart.")
 
     with col2:
-        st.markdown("**Income Allocation (After Shock)**")
         exp_part = min(total_expenses, shocked_income)
         sav_part = max(shocked_income - total_expenses, 0)
         if exp_part + sav_part > 0:
             fig, ax = plt.subplots()
-            ax.pie([exp_part, sav_part], labels=["Expenses", "Savings"], autopct="%1.0f%%")
+            ax.pie([exp_part, sav_part],
+                   labels=["Expenses", "Savings"],
+                   autopct="%1.0f%%")
             ax.axis("equal")
             st.pyplot(fig)
-        else:
-            st.info("Income too low to show allocation.")
 
     # ==================================================
     # STRESS TEST
@@ -204,20 +212,11 @@ with tab1:
         st.metric("Grade", normal_grade)
 
     with c2:
-        st.metric(
-            "Shocked Savings",
-            f"₹{shocked_savings:,.0f}",
-            delta=f"₹{shocked_savings - normal_savings:,.0f}"
-        )
-        st.metric("Stress Score", shocked_stress, delta=shocked_stress - normal_stress)
+        st.metric("Shocked Savings", f"₹{shocked_savings:,.0f}",
+                  delta=f"₹{shocked_savings - normal_savings:,.0f}")
+        st.metric("Stress Score", shocked_stress,
+                  delta=shocked_stress - normal_stress)
         st.metric("Grade", shocked_grade)
-
-    if resilience_loss <= 10:
-        st.success(f"🟢 Resilience Loss: {resilience_loss:.1f}%")
-    elif resilience_loss <= 30:
-        st.warning(f"🟡 Resilience Loss: {resilience_loss:.1f}%")
-    else:
-        st.error(f"🔴 Resilience Loss: {resilience_loss:.1f}%")
 
     # ==================================================
     # CTC ALIGNMENT — MONTHLY INPUTS
@@ -242,7 +241,10 @@ with tab1:
     )
 
     ctc_alignment_score = calculate_ctc_alignment_score(
-        fixed_pay_monthly, needs, variable_ratio
+        fixed_pay_monthly,
+        needs,
+        variable_ratio,
+        savings_rate
     )
 
     st.metric("CTC–Budget Alignment Score", f"{ctc_alignment_score} / 100")
@@ -258,7 +260,7 @@ with tab1:
 with tab2:
     st.subheader("🧠 Reflection")
 
-    r1 = st.text_area("1️⃣ What surprised you most about your spending pattern?")
+    r1 = st.text_area("1️⃣ What surprised you most about your spending?")
     r2 = st.text_area("2️⃣ Which expense would you reduce and why?")
     r3 = st.text_area("3️⃣ How did the scenario shock change your thinking?")
     r4 = st.text_area("4️⃣ One financial habit you want to change.")
