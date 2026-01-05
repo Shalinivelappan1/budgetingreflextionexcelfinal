@@ -13,16 +13,21 @@ st.set_page_config(
 )
 
 st.title("💰 Smart Budget & Resilience Tracker")
-st.caption("Clear logic • Student-safe • Scenario-aware")
+st.caption("Student-safe budgeting • Scenario awareness • Structural alignment")
 
 # ==================================================
 # FUNCTIONS
 # ==================================================
 def calculate_stress_test_score(expenses, income, normal_savings, shocked_savings):
     score = 0
+
+    # Coverage
     score += 40 if income >= expenses else 25 if income >= 0.9 * expenses else 10
+
+    # Savings sign
     score += 30 if shocked_savings > 0 else 15 if shocked_savings == 0 else 0
 
+    # Shock absorption
     if normal_savings > 0:
         ratio = shocked_savings / normal_savings
         score += 30 if ratio >= 0.75 else 20 if ratio >= 0.5 else 10 if ratio >= 0.25 else 5
@@ -36,12 +41,56 @@ def get_resilience_grade(score):
     return "A" if score >= 80 else "B" if score >= 65 else "C" if score >= 50 else "D"
 
 
-def generate_excel(summary_df, expenses_df, reflection_df):
+def calculate_ctc_alignment_score(fixed_pay_monthly, needs, variable_ratio):
+    score = 0
+
+    # Fixed pay vs needs (60 points)
+    if fixed_pay_monthly >= needs:
+        score += 60
+    elif fixed_pay_monthly >= 0.8 * needs:
+        score += 45
+    elif fixed_pay_monthly >= 0.6 * needs:
+        score += 30
+    else:
+        score += 10
+
+    # Variable dependence (40 points)
+    if variable_ratio <= 0.2:
+        score += 40
+    elif variable_ratio <= 0.35:
+        score += 30
+    elif variable_ratio <= 0.5:
+        score += 20
+    else:
+        score += 10
+
+    return score
+
+
+def generate_excel(summary_df, expenses_df, reflection_df, ctc_df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        workbook = writer.book
+
         summary_df.to_excel(writer, sheet_name="Summary", index=False)
         expenses_df.to_excel(writer, sheet_name="Expenses", index=False)
+
+        # ---- CTC Sheet + Pie ----
+        ctc_df.to_excel(writer, sheet_name="CTC_Structure", index=False)
+        ws = writer.sheets["CTC_Structure"]
+
+        if ctc_df["Amount"].sum() > 0:
+            chart = workbook.add_chart({"type": "pie"})
+            chart.add_series({
+                "categories": "=CTC_Structure!A2:A4",
+                "values": "=CTC_Structure!B2:B4",
+                "data_labels": {"percentage": True}
+            })
+            chart.set_title({"name": "CTC Composition"})
+            ws.insert_chart("D2", chart)
+
         reflection_df.to_excel(writer, sheet_name="Reflection", index=False)
+
     output.seek(0)
     return output
 
@@ -82,9 +131,7 @@ with tab1:
     st.metric("Monthly Savings", f"₹{normal_savings:,.0f}")
     st.metric("Savings Rate", f"{savings_rate:.1f}%")
 
-    # ==================================================
-    # EXPENSE GROUPING FOR PIE
-    # ==================================================
+    # -------- Expense Groups --------
     needs = expenses["Housing (Rent / EMI)"] + expenses["Food"] + expenses["Utilities"]
     wants = expenses["Lifestyle & Entertainment"]
     others = total_expenses - needs - wants
@@ -95,16 +142,13 @@ with tab1:
     st.subheader("⚡ Scenario Shocks")
 
     bonus_shock = st.checkbox("❌ Bonus / Variable Pay NOT paid")
-    tax_shock = st.checkbox("📈 Income Tax increases by 20%")
-
-    estimated_bonus = 0.10 * income
-    estimated_tax_hit = 0.05 * income
+    tax_shock = st.checkbox("📈 Income Tax increases")
 
     shocked_income = income
     if bonus_shock:
-        shocked_income -= estimated_bonus
+        shocked_income -= 0.10 * income
     if tax_shock:
-        shocked_income -= estimated_tax_hit
+        shocked_income -= 0.05 * income
 
     shocked_savings = shocked_income - total_expenses
 
@@ -115,35 +159,26 @@ with tab1:
 
     col1, col2 = st.columns(2)
 
-    # -------- Pie 1: Expenses --------
     with col1:
         st.markdown("**Expenses: Needs / Wants / Others**")
         values = [needs, wants, others]
-        labels = ["Needs", "Wants", "Others"]
-
         if sum(values) > 0:
-            fig1, ax1 = plt.subplots()
-            ax1.pie(values, labels=labels, autopct="%1.0f%%", startangle=90)
-            ax1.axis("equal")
-            st.pyplot(fig1)
+            fig, ax = plt.subplots()
+            ax.pie(values, labels=["Needs", "Wants", "Others"], autopct="%1.0f%%")
+            ax.axis("equal")
+            st.pyplot(fig)
         else:
             st.info("Enter expenses to view chart.")
 
-    # -------- Pie 2: Income Allocation (After Shock) --------
     with col2:
         st.markdown("**Income Allocation (After Shock)**")
-
-        expense_component = min(total_expenses, shocked_income)
-        savings_component = max(shocked_income - total_expenses, 0)
-
-        values = [expense_component, savings_component]
-        labels = ["Expenses", "Savings"]
-
-        if sum(values) > 0:
-            fig2, ax2 = plt.subplots()
-            ax2.pie(values, labels=labels, autopct="%1.0f%%", startangle=90)
-            ax2.axis("equal")
-            st.pyplot(fig2)
+        exp_part = min(total_expenses, shocked_income)
+        sav_part = max(shocked_income - total_expenses, 0)
+        if exp_part + sav_part > 0:
+            fig, ax = plt.subplots()
+            ax.pie([exp_part, sav_part], labels=["Expenses", "Savings"], autopct="%1.0f%%")
+            ax.axis("equal")
+            st.pyplot(fig)
         else:
             st.info("Income too low to show allocation.")
 
@@ -153,7 +188,6 @@ with tab1:
     normal_stress = calculate_stress_test_score(
         total_expenses, income, normal_savings, normal_savings
     )
-
     shocked_stress = calculate_stress_test_score(
         total_expenses, shocked_income, normal_savings, shocked_savings
     )
@@ -166,40 +200,20 @@ with tab1:
         if normal_stress > 0 else 0
     )
 
-    # ==================================================
-    # RESULTS
-    # ==================================================
-    st.subheader("📊 Normal vs Shocked (Side-by-Side)")
+    st.subheader("📊 Normal vs Shocked")
 
     c1, c2 = st.columns(2)
-
     with c1:
-        st.markdown("**Normal**")
-        st.metric("Income", f"₹{income:,.0f}")
-        st.metric("Savings", f"₹{normal_savings:,.0f}")
+        st.metric("Normal Savings", f"₹{normal_savings:,.0f}")
         st.metric("Stress Score", normal_stress)
         st.metric("Grade", normal_grade)
 
     with c2:
-        st.markdown("**After Shock**")
-        st.metric(
-            "Income",
-            f"₹{shocked_income:,.0f}",
-            delta=f"₹{shocked_income - income:,.0f}"
-        )
-        st.metric(
-            "Savings",
-            f"₹{shocked_savings:,.0f}",
-            delta=f"₹{shocked_savings - normal_savings:,.0f}"
-        )
-        st.metric(
-            "Stress Score",
-            shocked_stress,
-            delta=shocked_stress - normal_stress
-        )
+        st.metric("Shocked Savings", f"₹{shocked_savings:,.0f}",
+                  delta=f"₹{shocked_savings - normal_savings:,.0f}")
+        st.metric("Stress Score", shocked_stress,
+                  delta=shocked_stress - normal_stress)
         st.metric("Grade", shocked_grade)
-
-    st.subheader("📉 Resilience Loss")
 
     if resilience_loss <= 10:
         st.success(f"🟢 Resilience Loss: {resilience_loss:.1f}%")
@@ -208,8 +222,37 @@ with tab1:
     else:
         st.error(f"🔴 Resilience Loss: {resilience_loss:.1f}%")
 
+    # ==================================================
+    # CTC ALIGNMENT (DESCRIPTIVE)
+    # ==================================================
+    st.subheader("🏢 CTC Component Alignment (Annual)")
+
+    basic = st.number_input("Basic Pay (Annual ₹)", 0)
+    hra = st.number_input("HRA (Annual ₹)", 0)
+    allowance = st.number_input("Special Allowance (Annual ₹)", 0)
+    variable_pay = st.number_input("Variable Pay (Annual ₹)", 0)
+    pf = st.number_input("PF + Tax (Annual ₹)", 0)
+
+    fixed_pay_annual = basic + hra + allowance
+    fixed_pay_monthly = fixed_pay_annual / 12
+    variable_ratio = (
+        variable_pay / (fixed_pay_annual + variable_pay)
+        if (fixed_pay_annual + variable_pay) > 0 else 0
+    )
+
+    ctc_alignment_score = calculate_ctc_alignment_score(
+        fixed_pay_monthly, needs, variable_ratio
+    )
+
+    st.metric("CTC–Budget Alignment Score", f"{ctc_alignment_score} / 100")
+
+    if fixed_pay_monthly < needs:
+        st.error("🚨 Fixed pay does NOT cover essential monthly expenses.")
+    else:
+        st.success("✅ Fixed pay covers essential monthly expenses.")
+
 # ==================================================
-# TAB 2 — REFLECTION & DOWNLOAD
+# TAB 2 — REFLECTION & EXPORT
 # ==================================================
 with tab2:
     st.subheader("🧠 Reflection")
@@ -228,9 +271,8 @@ with tab2:
                 "Savings Rate (%)",
                 "Normal Stress Score",
                 "Shocked Stress Score",
-                "Normal Grade",
-                "Shocked Grade",
-                "Resilience Loss (%)"
+                "Resilience Loss (%)",
+                "CTC–Budget Alignment Score"
             ],
             "Value": [
                 income,
@@ -239,17 +281,21 @@ with tab2:
                 round(savings_rate, 1),
                 normal_stress,
                 shocked_stress,
-                normal_grade,
-                shocked_grade,
-                round(resilience_loss, 1)
+                round(resilience_loss, 1),
+                ctc_alignment_score
             ]
+        })
+
+        ctc_df = pd.DataFrame({
+            "Component": ["Fixed Pay", "Variable Pay", "Deductions"],
+            "Amount": [fixed_pay_annual, variable_pay, pf]
         })
 
         reflection_df = pd.DataFrame({
             "Reflection Response": [r1, r2, r3, r4]
         })
 
-        excel = generate_excel(summary_df, df_exp, reflection_df)
+        excel = generate_excel(summary_df, df_exp, reflection_df, ctc_df)
 
         st.download_button(
             "📥 Download Excel File",
