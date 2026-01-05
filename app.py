@@ -7,16 +7,16 @@ from io import BytesIO
 # PAGE CONFIG
 # ==================================================
 st.set_page_config(
-    page_title="Smart Budget, Risk & Resilience Tracker",
+    page_title="Smart Budget & Resilience Tracker",
     page_icon="💰",
     layout="centered"
 )
 
-st.title("💰 Smart Budget, Risk & Resilience Tracker")
-st.caption("Simple • Intuitive • Classroom-safe")
+st.title("💰 Smart Budget & Resilience Tracker")
+st.caption("Clear logic • Student-safe • Scenario-aware")
 
 # ==================================================
-# SCORING FUNCTIONS
+# FUNCTIONS
 # ==================================================
 def calculate_stress_test_score(expenses, income, normal_savings, shocked_savings):
     score = 0
@@ -28,6 +28,7 @@ def calculate_stress_test_score(expenses, income, normal_savings, shocked_saving
         score += 30 if ratio >= 0.75 else 20 if ratio >= 0.5 else 10 if ratio >= 0.25 else 5
     else:
         score += 5
+
     return round(score)
 
 
@@ -35,9 +36,6 @@ def get_resilience_grade(score):
     return "A" if score >= 80 else "B" if score >= 65 else "C" if score >= 50 else "D"
 
 
-# ==================================================
-# EXCEL EXPORT
-# ==================================================
 def generate_excel(summary_df, expenses_df, reflection_df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -65,15 +63,12 @@ with tab1:
         "Housing (Rent / EMI)",
         "Food",
         "Transport",
-       overUtilities",
+        "Utilities",
         "Lifestyle & Entertainment",
         "Others"
     ]
 
-    expenses = {
-        c: st.number_input(c, min_value=0, step=500)
-        for c in categories
-    }
+    expenses = {c: st.number_input(c, min_value=0, step=500) for c in categories}
 
     df_exp = pd.DataFrame({
         "Category": expenses.keys(),
@@ -87,28 +82,74 @@ with tab1:
     st.metric("Monthly Savings", f"₹{normal_savings:,.0f}")
     st.metric("Savings Rate", f"{savings_rate:.1f}%")
 
-    # =============================
-    # Scenario Shocks (SIMPLE)
-    # =============================
+    # ==================================================
+    # EXPENSE GROUPING FOR PIE
+    # ==================================================
+    needs = expenses["Housing (Rent / EMI)"] + expenses["Food"] + expenses["Utilities"]
+    wants = expenses["Lifestyle & Entertainment"]
+    others = total_expenses - needs - wants
+
+    # ==================================================
+    # SCENARIO SHOCKS
+    # ==================================================
     st.subheader("⚡ Scenario Shocks")
 
     bonus_shock = st.checkbox("❌ Bonus / Variable Pay NOT paid")
     tax_shock = st.checkbox("📈 Income Tax increases by 20%")
 
-    # Assume variable pay is part of income (approx 10%)
-    estimated_variable = 0.10 * income
+    estimated_bonus = 0.10 * income
+    estimated_tax_hit = 0.05 * income
 
     shocked_income = income
     if bonus_shock:
-        shocked_income -= estimated_variable
+        shocked_income -= estimated_bonus
     if tax_shock:
-        shocked_income -= 0.05 * income  # simple tax shock
+        shocked_income -= estimated_tax_hit
 
     shocked_savings = shocked_income - total_expenses
 
-    # =============================
-    # Stress Scores
-    # =============================
+    # ==================================================
+    # PIE CHARTS
+    # ==================================================
+    st.subheader("📊 Visual Breakdown")
+
+    col1, col2 = st.columns(2)
+
+    # -------- Pie 1: Expenses --------
+    with col1:
+        st.markdown("**Expenses: Needs / Wants / Others**")
+        values = [needs, wants, others]
+        labels = ["Needs", "Wants", "Others"]
+
+        if sum(values) > 0:
+            fig1, ax1 = plt.subplots()
+            ax1.pie(values, labels=labels, autopct="%1.0f%%", startangle=90)
+            ax1.axis("equal")
+            st.pyplot(fig1)
+        else:
+            st.info("Enter expenses to view chart.")
+
+    # -------- Pie 2: Income Allocation (After Shock) --------
+    with col2:
+        st.markdown("**Income Allocation (After Shock)**")
+
+        expense_component = min(total_expenses, shocked_income)
+        savings_component = max(shocked_income - total_expenses, 0)
+
+        values = [expense_component, savings_component]
+        labels = ["Expenses", "Savings"]
+
+        if sum(values) > 0:
+            fig2, ax2 = plt.subplots()
+            ax2.pie(values, labels=labels, autopct="%1.0f%%", startangle=90)
+            ax2.axis("equal")
+            st.pyplot(fig2)
+        else:
+            st.info("Income too low to show allocation.")
+
+    # ==================================================
+    # STRESS TEST
+    # ==================================================
     normal_stress = calculate_stress_test_score(
         total_expenses, income, normal_savings, normal_savings
     )
@@ -125,9 +166,9 @@ with tab1:
         if normal_stress > 0 else 0
     )
 
-    # =============================
-    # DISPLAY
-    # =============================
+    # ==================================================
+    # RESULTS
+    # ==================================================
     st.subheader("📊 Normal vs Shocked (Side-by-Side)")
 
     c1, c2 = st.columns(2)
@@ -159,6 +200,7 @@ with tab1:
         st.metric("Grade", shocked_grade)
 
     st.subheader("📉 Resilience Loss")
+
     if resilience_loss <= 10:
         st.success(f"🟢 Resilience Loss: {resilience_loss:.1f}%")
     elif resilience_loss <= 30:
@@ -172,31 +214,39 @@ with tab1:
 with tab2:
     st.subheader("🧠 Reflection")
 
-    r1 = st.text_area("1️⃣ What surprised you most about your spending?")
+    r1 = st.text_area("1️⃣ What surprised you most about your spending pattern?")
     r2 = st.text_area("2️⃣ Which expense would you reduce and why?")
-    r3 = st.text_area("3️⃣ How did the scenario shock change your thinking?")
+    r3 = st.text_area("3️⃣ How did the income shock change your thinking?")
     r4 = st.text_area("4️⃣ One financial habit you want to change.")
 
     if st.button("⬇️ Download Excel Submission"):
         summary_df = pd.DataFrame({
             "Metric": [
-                "Income", "Expenses", "Savings",
+                "Monthly Income",
+                "Total Expenses",
+                "Monthly Savings",
                 "Savings Rate (%)",
-                "Normal Stress Score", "Shocked Stress Score",
-                "Normal Grade", "Shocked Grade",
+                "Normal Stress Score",
+                "Shocked Stress Score",
+                "Normal Grade",
+                "Shocked Grade",
                 "Resilience Loss (%)"
             ],
             "Value": [
-                income, total_expenses, normal_savings,
+                income,
+                total_expenses,
+                normal_savings,
                 round(savings_rate, 1),
-                normal_stress, shocked_stress,
-                normal_grade, shocked_grade,
+                normal_stress,
+                shocked_stress,
+                normal_grade,
+                shocked_grade,
                 round(resilience_loss, 1)
             ]
         })
 
         reflection_df = pd.DataFrame({
-            "Response": [r1, r2, r3, r4]
+            "Reflection Response": [r1, r2, r3, r4]
         })
 
         excel = generate_excel(summary_df, df_exp, reflection_df)
