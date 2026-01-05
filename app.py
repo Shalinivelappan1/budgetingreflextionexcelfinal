@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 st.title("💰 Smart Budget, Risk & Resilience Tracker")
-st.caption("Finance × HR | India-focused | Risk-aware budgeting")
+st.caption("Finance × HR | India-focused | Risk-aware personal budgeting")
 
 # ==================================================
 # SCORING FUNCTIONS
@@ -41,9 +41,9 @@ def calculate_ctc_budget_alignment_score(fixed_pay, variable_pay, needs, savings
     return round(score)
 
 
-def calculate_stress_test_score(total_expenses, shocked_take_home, normal_savings, shocked_savings):
+def calculate_stress_test_score(total_expenses, take_home, normal_savings, shocked_savings):
     score = 0
-    score += 40 if shocked_take_home >= total_expenses else 25 if shocked_take_home >= 0.9 * total_expenses else 10
+    score += 40 if take_home >= total_expenses else 25 if take_home >= 0.9 * total_expenses else 10
     score += 30 if shocked_savings > 0 else 15 if shocked_savings == 0 else 0
 
     if normal_savings > 0:
@@ -58,123 +58,26 @@ def get_resilience_grade(score):
     return "A" if score >= 80 else "B" if score >= 65 else "C" if score >= 50 else "D"
 
 
-def get_policy_recommendations_by_grade(
-    grade, expense_ratio, savings_rate, variable_ratio, fixed_coverage_ratio
-):
-    base = {
-        "A": [
-            "Maintain savings discipline and avoid lifestyle inflation.",
-            "Increase long-term investments (PF, NPS, mutual funds).",
-            "Build a 6-month emergency fund."
-        ],
-        "B": [
-            "Increase savings to improve shock resilience.",
-            "Reduce discretionary expenses.",
-            "Avoid using variable pay for fixed expenses."
-        ],
-        "C": [
-            "Cut lifestyle expenses immediately.",
-            "Ensure fixed expenses are covered by fixed income.",
-            "Do not rely on bonuses for essentials."
-        ],
-        "D": [
-            "Urgently reduce fixed commitments.",
-            "Stop relying on variable pay for necessities.",
-            "Start emergency savings immediately."
-        ]
-    }
-
-    recs = base[grade].copy()
-    if expense_ratio > 85:
-        recs.append("Expense-to-income ratio is critically high.")
+def suggest_fastest_resilience_fix(resilience_loss_pct, savings_rate, variable_ratio, fixed_coverage_ratio):
+    if resilience_loss_pct <= 10:
+        return "Maintain current discipline. Avoid lifestyle inflation."
     if savings_rate < 10:
-        recs.append("Savings are very low. Target at least 10%.")
+        return "Increase savings slightly — this gives the fastest resilience gain."
     if variable_ratio > 0.35:
-        recs.append("High dependence on variable pay increases risk.")
+        return "Reduce dependence on variable pay for regular expenses."
     if fixed_coverage_ratio < 1:
-        recs.append("Fixed income does not fully cover fixed needs.")
-
-    return recs
+        return "Reduce fixed expenses so they are fully covered by fixed income."
+    return "Improve expense flexibility by reducing discretionary spending."
 
 # ==================================================
-# EXCEL EXPORT (WITH PIE CHARTS)
+# EXCEL EXPORT
 # ==================================================
-def generate_excel(
-    income, total_expenses, savings, savings_rate, expense_ratio,
-    budget_score, alignment_score, stress_score, resilience_grade,
-    df_exp, needs_pct, wants_pct,
-    fixed_pay, variable, deductions,
-    recommendations, reflections
-):
+def generate_excel(dataframes):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         workbook = writer.book
-
-        # ---- Summary ----
-        pd.DataFrame({
-            "Metric": [
-                "Income", "Expenses", "Savings",
-                "Savings Rate (%)", "Expense Ratio (%)",
-                "Budget Score", "Alignment Score",
-                "Stress-Test Score", "Resilience Grade"
-            ],
-            "Value": [
-                income, total_expenses, savings,
-                round(savings_rate, 2), round(expense_ratio, 2),
-                budget_score, alignment_score,
-                stress_score, resilience_grade
-            ]
-        }).to_excel(writer, sheet_name="Summary", index=False)
-
-        # ---- Expenses ----
-        df_exp.to_excel(writer, sheet_name="Expenses", index=False)
-
-        # ---- CTC Structure ----
-        ctc_df = pd.DataFrame({
-            "Component": ["Fixed Pay", "Variable Pay", "Deductions"],
-            "Amount": [fixed_pay, variable, deductions]
-        })
-        ctc_df.to_excel(writer, sheet_name="CTC_Structure", index=False)
-        ws1 = writer.sheets["CTC_Structure"]
-
-        if ctc_df["Amount"].sum() > 0:
-            chart1 = workbook.add_chart({"type": "pie"})
-            chart1.add_series({
-                "categories": "=CTC_Structure!A2:A4",
-                "values": "=CTC_Structure!B2:B4",
-                "data_labels": {"percentage": True}
-            })
-            chart1.set_title({"name": "CTC Composition"})
-            ws1.insert_chart("D2", chart1)
-
-        # ---- Budget Allocation ----
-        alloc_df = pd.DataFrame({
-            "Category": ["Needs", "Wants", "Savings"],
-            "Percentage": [needs_pct, wants_pct, savings_rate]
-        })
-        alloc_df.to_excel(writer, sheet_name="Budget_Allocation", index=False)
-        ws2 = writer.sheets["Budget_Allocation"]
-
-        if alloc_df["Percentage"].sum() > 0:
-            chart2 = workbook.add_chart({"type": "pie"})
-            chart2.add_series({
-                "categories": "=Budget_Allocation!A2:A4",
-                "values": "=Budget_Allocation!B2:B4",
-                "data_labels": {"percentage": True}
-            })
-            chart2.set_title({"name": "Needs vs Wants vs Savings"})
-            ws2.insert_chart("D2", chart2)
-
-        # ---- Recommendations ----
-        pd.DataFrame({"Recommendation": recommendations}).to_excel(
-            writer, sheet_name="Recommendations", index=False
-        )
-
-        # ---- Reflection ----
-        pd.DataFrame({"Response": reflections}).to_excel(
-            writer, sheet_name="Reflection", index=False
-        )
-
+        for name, df in dataframes.items():
+            df.to_excel(writer, sheet_name=name, index=False)
     output.seek(0)
     return output
 
@@ -187,6 +90,8 @@ tab1, tab2 = st.tabs(["📊 Dashboard", "🧠 Reflection & Submission"])
 # TAB 1 — DASHBOARD
 # ==================================================
 with tab1:
+    st.subheader("💸 Income & Expenses")
+
     income = st.number_input("Monthly Income (₹)", min_value=0, step=1000)
 
     categories = [
@@ -209,13 +114,12 @@ with tab1:
     needs_pct = needs / income * 100 if income else 0
     wants_pct = wants / income * 100 if income else 0
 
-    st.subheader("📈 Budget Summary")
-    st.metric("Income", f"₹{income:,.0f}")
-    st.metric("Expenses", f"₹{total_expenses:,.0f}")
     st.metric("Savings", f"₹{savings:,.0f}")
+    st.metric("Savings Rate", f"{savings_rate:.1f}%")
 
-    # ---- Salary Structure ----
+    # ---------- Salary Structure ----------
     st.subheader("🏢 Salary Structure (Annual)")
+
     basic = st.number_input("Basic Pay", 0)
     hra = st.number_input("HRA", 0)
     allowance = st.number_input("Special Allowance", 0)
@@ -227,13 +131,13 @@ with tab1:
     fixed_pay = basic + hra + allowance
     gross = fixed_pay + variable
     deductions = pf + tax + pt
+    normal_take_home = gross - deductions
 
-    # ---- Pie Charts ----
+    # ---------- Pie Charts ----------
     st.subheader("🔄 Income Structure vs Budget Allocation")
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**🏢 Income Structure (CTC)**")
         values = [fixed_pay, variable, deductions]
         if sum(values) > 0:
             fig, ax = plt.subplots()
@@ -242,10 +146,9 @@ with tab1:
             ax.axis("equal")
             st.pyplot(fig)
         else:
-            st.info("Enter salary components to view this chart.")
+            st.info("Enter salary details to view chart.")
 
     with col2:
-        st.markdown("**💸 Budget Allocation**")
         values = [needs_pct, wants_pct, savings_rate]
         if sum(values) > 0:
             fig, ax = plt.subplots()
@@ -254,69 +157,131 @@ with tab1:
             ax.axis("equal")
             st.pyplot(fig)
         else:
-            st.info("Enter income and expenses to view this chart.")
+            st.info("Enter income & expenses to view chart.")
 
-    # ---- Shocks ----
+    # ---------- Scenario Shocks ----------
     st.subheader("⚡ Scenario Shocks")
-    bonus_shock = st.checkbox("❌ Bonus NOT paid")
-    tax_shock = st.checkbox("📈 Income tax increases by 20%")
+
+    bonus_shock = st.checkbox("❌ Bonus / Variable Pay NOT paid")
+    tax_shock = st.checkbox("📈 Income Tax increases by 20%")
 
     shocked_variable = 0 if bonus_shock else variable
     shocked_tax = tax * 1.2 if tax_shock else tax
-    shocked_take_home = (fixed_pay + shocked_variable) - (pf + shocked_tax + pt)
-    shocked_savings = shocked_take_home - total_expenses
 
-    # ---- Scores ----
+    shocked_gross = fixed_pay + shocked_variable
+    shocked_deductions = pf + shocked_tax + pt
+    shocked_take_home = shocked_gross - shocked_deductions
+    shocked_savings = shocked_take_home - total_expenses
+    shocked_savings_rate = shocked_savings / shocked_take_home * 100 if shocked_take_home > 0 else 0
+
+    # ---------- Scores ----------
+    budget_score = calculate_financial_health_score(
+        savings_rate, expense_ratio, needs_pct, wants_pct
+    )
+
     alignment_score = calculate_ctc_budget_alignment_score(
         fixed_pay, variable, needs, savings, gross
     )
-    stress_score = calculate_stress_test_score(
+
+    normal_stress_score = calculate_stress_test_score(
+        total_expenses, normal_take_home, savings, savings
+    )
+
+    shocked_stress_score = calculate_stress_test_score(
         total_expenses, shocked_take_home, savings, shocked_savings
     )
-    resilience_grade = get_resilience_grade(stress_score)
-    budget_score = calculate_financial_health_score(
-        savings_rate, expense_ratio, needs_pct, wants_pct
+
+    normal_grade = get_resilience_grade(normal_stress_score)
+    shocked_grade = get_resilience_grade(shocked_stress_score)
+
+    resilience_loss_pct = (
+        (normal_stress_score - shocked_stress_score) / normal_stress_score * 100
+        if normal_stress_score > 0 else 0
     )
 
     variable_ratio = variable / gross if gross else 1
     fixed_coverage_ratio = fixed_pay / needs if needs else 0
 
-    recommendations = get_policy_recommendations_by_grade(
-        resilience_grade, expense_ratio, savings_rate,
-        variable_ratio, fixed_coverage_ratio
+    fastest_fix = suggest_fastest_resilience_fix(
+        resilience_loss_pct, savings_rate, variable_ratio, fixed_coverage_ratio
     )
 
-    st.subheader("🧮 Scores & Risk")
-    st.metric("Budget Score", budget_score)
-    st.metric("Alignment Score", alignment_score)
-    st.metric("Stress-Test Score", stress_score)
-    st.metric("Resilience Grade", resilience_grade)
+    # ---------- Display ----------
+    st.subheader("📊 Normal vs Shocked (Side-by-Side)")
 
-    st.subheader("📌 Policy Recommendations")
-    for r in recommendations:
-        st.write("•", r)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Normal**")
+        st.metric("Savings", f"₹{savings:,.0f}")
+        st.metric("Stress-Test Score", normal_stress_score)
+        st.metric("Grade", normal_grade)
+
+    with c2:
+        st.markdown("**After Shock**")
+        st.metric("Savings", f"₹{shocked_savings:,.0f}",
+                  delta=f"₹{shocked_savings - savings:,.0f}")
+        st.metric("Stress-Test Score", shocked_stress_score,
+                  delta=shocked_stress_score - normal_stress_score)
+        st.metric("Grade", shocked_grade)
+
+    st.subheader("📉 Resilience Loss")
+
+    if resilience_loss_pct <= 10:
+        st.success(f"🟢 Resilience Loss: {resilience_loss_pct:.1f}%")
+    elif resilience_loss_pct <= 30:
+        st.warning(f"🟡 Resilience Loss: {resilience_loss_pct:.1f}%")
+    else:
+        st.error(f"🔴 Resilience Loss: {resilience_loss_pct:.1f}%")
+
+    st.subheader("🚀 Fastest Way to Improve Resilience")
+    st.info(fastest_fix)
 
 # ==================================================
 # TAB 2 — REFLECTION & EXPORT
 # ==================================================
 with tab2:
-    r1 = st.text_area("What surprised you most about your spending?")
-    r2 = st.text_area("Which expense would you reduce and why?")
-    r3 = st.text_area("How did income structure affect your risk?")
-    r4 = st.text_area("What changed after the stress test?")
+    st.subheader("🧠 Reflection")
+
+    r1 = st.text_area("1️⃣ What surprised you most about your spending pattern?")
+    r2 = st.text_area("2️⃣ Which expense would you reduce to improve savings? Why?")
+    r3 = st.text_area("3️⃣ Did your budget broadly follow the 30–30–20 rule? Explain.")
+    r4 = st.text_area("4️⃣ How did your income structure affect financial risk?")
+    r5 = st.text_area("5️⃣ One financial habit you want to change after this exercise.")
+    r6 = st.text_area(
+        "6️⃣ Scenario Reflection: After the income shock, what changed and what would you adjust?"
+    )
+    r7 = st.text_area(
+        "7️⃣ Targeted Action Reflection: "
+        f"{fastest_fix} How realistic is this change for you?"
+    )
 
     if st.button("⬇️ Download Excel Submission"):
-        excel = generate_excel(
-            income, total_expenses, savings, savings_rate, expense_ratio,
-            budget_score, alignment_score, stress_score, resilience_grade,
-            df_exp, needs_pct, wants_pct,
-            fixed_pay, variable, deductions,
-            recommendations, [r1, r2, r3, r4]
-        )
+        excel = generate_excel({
+            "Summary": pd.DataFrame({
+                "Metric": [
+                    "Savings", "Savings Rate (%)",
+                    "Budget Score", "Alignment Score",
+                    "Normal Stress Score", "Shocked Stress Score",
+                    "Normal Grade", "Shocked Grade",
+                    "Resilience Loss (%)"
+                ],
+                "Value": [
+                    savings, round(savings_rate, 2),
+                    budget_score, alignment_score,
+                    normal_stress_score, shocked_stress_score,
+                    normal_grade, shocked_grade,
+                    round(resilience_loss_pct, 1)
+                ]
+            }),
+            "Expenses": df_exp,
+            "Reflections": pd.DataFrame({
+                "Response": [r1, r2, r3, r4, r5, r6, r7]
+            })
+        })
 
         st.download_button(
             "📥 Download Excel",
             excel,
-            "Budget_Risk_Resilience.xlsx",
+            "Budget_Risk_Resilience_Submission.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
