@@ -13,21 +13,16 @@ st.set_page_config(
 )
 
 st.title("💰 Smart Budget & Resilience Tracker")
-st.caption("Student-safe budgeting • Scenario awareness • Structural alignment")
+st.caption("Budgeting • Scenarios • CTC alignment (student-friendly)")
 
 # ==================================================
 # FUNCTIONS
 # ==================================================
 def calculate_stress_test_score(expenses, income, normal_savings, shocked_savings):
     score = 0
-
-    # Coverage
     score += 40 if income >= expenses else 25 if income >= 0.9 * expenses else 10
-
-    # Savings sign
     score += 30 if shocked_savings > 0 else 15 if shocked_savings == 0 else 0
 
-    # Shock absorption
     if normal_savings > 0:
         ratio = shocked_savings / normal_savings
         score += 30 if ratio >= 0.75 else 20 if ratio >= 0.5 else 10 if ratio >= 0.25 else 5
@@ -44,7 +39,7 @@ def get_resilience_grade(score):
 def calculate_ctc_alignment_score(fixed_pay_monthly, needs, variable_ratio):
     score = 0
 
-    # Fixed pay vs needs (60 points)
+    # Fixed pay coverage (60)
     if fixed_pay_monthly >= needs:
         score += 60
     elif fixed_pay_monthly >= 0.8 * needs:
@@ -54,7 +49,7 @@ def calculate_ctc_alignment_score(fixed_pay_monthly, needs, variable_ratio):
     else:
         score += 10
 
-    # Variable dependence (40 points)
+    # Variable dependence (40)
     if variable_ratio <= 0.2:
         score += 40
     elif variable_ratio <= 0.35:
@@ -75,7 +70,7 @@ def generate_excel(summary_df, expenses_df, reflection_df, ctc_df):
         summary_df.to_excel(writer, sheet_name="Summary", index=False)
         expenses_df.to_excel(writer, sheet_name="Expenses", index=False)
 
-        # ---- CTC Sheet + Pie ----
+        # CTC sheet + pie
         ctc_df.to_excel(writer, sheet_name="CTC_Structure", index=False)
         ws = writer.sheets["CTC_Structure"]
 
@@ -131,7 +126,7 @@ with tab1:
     st.metric("Monthly Savings", f"₹{normal_savings:,.0f}")
     st.metric("Savings Rate", f"{savings_rate:.1f}%")
 
-    # -------- Expense Groups --------
+    # Expense groups
     needs = expenses["Housing (Rent / EMI)"] + expenses["Food"] + expenses["Utilities"]
     wants = expenses["Lifestyle & Entertainment"]
     others = total_expenses - needs - wants
@@ -161,10 +156,10 @@ with tab1:
 
     with col1:
         st.markdown("**Expenses: Needs / Wants / Others**")
-        values = [needs, wants, others]
-        if sum(values) > 0:
+        vals = [needs, wants, others]
+        if sum(vals) > 0:
             fig, ax = plt.subplots()
-            ax.pie(values, labels=["Needs", "Wants", "Others"], autopct="%1.0f%%")
+            ax.pie(vals, labels=["Needs", "Wants", "Others"], autopct="%1.0f%%")
             ax.axis("equal")
             st.pyplot(fig)
         else:
@@ -209,10 +204,12 @@ with tab1:
         st.metric("Grade", normal_grade)
 
     with c2:
-        st.metric("Shocked Savings", f"₹{shocked_savings:,.0f}",
-                  delta=f"₹{shocked_savings - normal_savings:,.0f}")
-        st.metric("Stress Score", shocked_stress,
-                  delta=shocked_stress - normal_stress)
+        st.metric(
+            "Shocked Savings",
+            f"₹{shocked_savings:,.0f}",
+            delta=f"₹{shocked_savings - normal_savings:,.0f}"
+        )
+        st.metric("Stress Score", shocked_stress, delta=shocked_stress - normal_stress)
         st.metric("Grade", shocked_grade)
 
     if resilience_loss <= 10:
@@ -223,21 +220,25 @@ with tab1:
         st.error(f"🔴 Resilience Loss: {resilience_loss:.1f}%")
 
     # ==================================================
-    # CTC ALIGNMENT (DESCRIPTIVE)
+    # CTC ALIGNMENT — MONTHLY INPUTS
     # ==================================================
-    st.subheader("🏢 CTC Component Alignment (Annual)")
+    st.subheader("🏢 CTC Component Alignment (Monthly)")
 
-    basic = st.number_input("Basic Pay (Annual ₹)", 0)
-    hra = st.number_input("HRA (Annual ₹)", 0)
-    allowance = st.number_input("Special Allowance (Annual ₹)", 0)
-    variable_pay = st.number_input("Variable Pay (Annual ₹)", 0)
-    pf = st.number_input("PF + Tax (Annual ₹)", 0)
+    basic_m = st.number_input("Basic Pay (Monthly ₹)", 0, step=1000)
+    hra_m = st.number_input("HRA (Monthly ₹)", 0, step=1000)
+    allowance_m = st.number_input("Special Allowance (Monthly ₹)", 0, step=1000)
+    variable_m = st.number_input("Variable Pay (Monthly ₹)", 0, step=1000)
+    deductions_m = st.number_input("PF + Tax (Monthly ₹)", 0, step=1000)
 
-    fixed_pay_annual = basic + hra + allowance
-    fixed_pay_monthly = fixed_pay_annual / 12
+    fixed_pay_monthly = basic_m + hra_m + allowance_m
+
+    fixed_pay_annual = fixed_pay_monthly * 12
+    variable_pay_annual = variable_m * 12
+    deductions_annual = deductions_m * 12
+
     variable_ratio = (
-        variable_pay / (fixed_pay_annual + variable_pay)
-        if (fixed_pay_annual + variable_pay) > 0 else 0
+        variable_pay_annual / (fixed_pay_annual + variable_pay_annual)
+        if (fixed_pay_annual + variable_pay_annual) > 0 else 0
     )
 
     ctc_alignment_score = calculate_ctc_alignment_score(
@@ -259,7 +260,7 @@ with tab2:
 
     r1 = st.text_area("1️⃣ What surprised you most about your spending pattern?")
     r2 = st.text_area("2️⃣ Which expense would you reduce and why?")
-    r3 = st.text_area("3️⃣ How did the income shock change your thinking?")
+    r3 = st.text_area("3️⃣ How did the scenario shock change your thinking?")
     r4 = st.text_area("4️⃣ One financial habit you want to change.")
 
     if st.button("⬇️ Download Excel Submission"):
@@ -288,7 +289,7 @@ with tab2:
 
         ctc_df = pd.DataFrame({
             "Component": ["Fixed Pay", "Variable Pay", "Deductions"],
-            "Amount": [fixed_pay_annual, variable_pay, pf]
+            "Amount": [fixed_pay_annual, variable_pay_annual, deductions_annual]
         })
 
         reflection_df = pd.DataFrame({
