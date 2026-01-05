@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("💰 Smart Budget, Risk & Resilience Tracker")
-st.caption("Finance × HR | India-focused | Budgeting with risk & resilience")
+st.caption("Developed by Prof.Shalini Velappan, IIM Trichy")
 
 # ==================================================
 # SCORING FUNCTIONS
