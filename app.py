@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 st.title("💰 Smart Budget & Resilience Tracker")
-st.caption("Budgeting • Scenario risk • Income structure alignment")
+st.caption("Developed by Prof.Shalini Velappan, IIM Trichy")
 
 # ==================================================
 # FUNCTIONS
